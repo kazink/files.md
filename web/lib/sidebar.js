@@ -795,16 +795,28 @@ function TreeView(root, container, options) {
     }
 
     function setupContainerDropZone() {
-        container.addEventListener('dragover', function (e) {
+        // reload() runs on every sidebar render (focus, blur, file open) and
+        // the container element is persistent, so the listeners must replace
+        // the previous ones rather than stack. Each stacked closure pinned its
+        // whole TreeView - root, every TreeNode and its ~30 method closures -
+        // in memory forever: with thousands of files that leaked ~10-15 MB per
+        // render and pushed the tab to the V8 heap limit after a day of use.
+        const previous = container._treeDropHandlers;
+        if (previous) {
+            container.removeEventListener('dragover', previous.dragover);
+            container.removeEventListener('drop', previous.drop);
+        }
+
+        const onDragOver = function (e) {
             e.preventDefault();
             if (dropIndicator && !e.target.closest('.tree-item')) {
                 dropIndicator.remove();
                 dropIndicator = null;
             }
             e.dataTransfer.dropEffect = 'move';
-        });
+        };
 
-        container.addEventListener('drop', function (e) {
+        const onDrop = function (e) {
             e.preventDefault();
             if (dropIndicator) {
                 dropIndicator.remove();
@@ -814,7 +826,11 @@ function TreeView(root, container, options) {
             if (e.dataTransfer.files.length > 0) {
                 handleExternalFileDrop(e);
             }
-        });
+        };
+
+        container._treeDropHandlers = {dragover: onDragOver, drop: onDrop};
+        container.addEventListener('dragover', onDragOver);
+        container.addEventListener('drop', onDrop);
     }
 
     function handleExternalFileDrop(e) {
